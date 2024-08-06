@@ -3,26 +3,40 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const axios = require('axios');
 require('dotenv').config();  // Load environment variables
 
 // Initialize app
 const app = express();
+const PORT = process.env.PORT || 5000;
+
 app.use(express.json());
 app.use(cors());
 
-// Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/auth-app', {
+// MongoDB connection for authentication and news storage
+mongoose.connect('mongodb://localhost:27017/auth-news-app', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 
-// User schema
+// User schema for authentication
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
 });
 
 const User = mongoose.model('User', userSchema);
+
+// Article schema for news storage
+const articleSchema = new mongoose.Schema({
+  title: String,
+  description: String,
+  urlToImage: String,
+  content: String,
+  url: String,
+});
+
+const Article = mongoose.model('Article', articleSchema);
 
 // Register route
 app.post('/register', async (req, res) => {
@@ -63,4 +77,42 @@ app.get('/welcome', (req, res) => {
   }
 });
 
-app.listen(5000, () => console.log('Server started on port 5000'));
+// Fetch and store articles in MongoDB
+app.get('/fetch-articles', async (req, res) => {
+  try {
+    const response = await axios.get('https://newsapi.org/v2/top-headlines', {
+      params: {
+        country: 'us',
+        apiKey: '0203517ab5344207ad132384da88c073',
+      },
+    });
+
+    const articles = response.data.articles.map((article) => ({
+      title: article.title,
+      description: article.description,
+      urlToImage: article.urlToImage,
+      content: article.content,
+      url: article.url,
+    }));
+
+    // Clear the existing articles and insert the new ones
+    await Article.deleteMany({});
+    await Article.insertMany(articles);
+    res.status(200).json({ message: 'Articles stored successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching articles', error });
+  }
+});
+
+// Get articles from MongoDB
+app.get('/articles', async (req, res) => {
+  try {
+    const articles = await Article.find();
+    res.status(200).json(articles);
+  } catch (error) {
+    res.status(500).json({ message: 'Error retrieving articles', error });
+  }
+});
+
+// Start the server
+app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
